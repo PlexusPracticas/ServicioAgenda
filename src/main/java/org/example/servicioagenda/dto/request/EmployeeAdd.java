@@ -1,0 +1,18 @@
+package org.example.servicioagenda.dto.request;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class EmployeeAdd {
+    private String name;
+    private String surname;
+    private String plexusMail;
+    private String mailClient;
+    private String phoneNumber;
+    private AssignedDeviceInputDTO assignedDevice;
+
+}
