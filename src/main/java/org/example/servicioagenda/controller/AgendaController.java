@@ -10,6 +10,7 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/agenda")
@@ -17,8 +18,8 @@ public class AgendaController {
 
     private ListContactsService agendaService;
 
-    public AgendaController(ListContactsService agendaService){
-        this.agendaService=agendaService;
+    public AgendaController(ListContactsService agendaService) {
+        this.agendaService = agendaService;
     }
 
     @GetMapping("/employees")
@@ -59,45 +60,43 @@ public class AgendaController {
         for (EmployeeAdd contacto : request.getEmployees()) {
             String employeeIdStr = null;
             try {
-                // 1️⃣ Crear employee
+                //Crear employee
                 EmployeeInputDTO empReq = new EmployeeInputDTO();
                 empReq.setName(contacto.getName());
                 empReq.setSurname(contacto.getSurname());
-                empReq.setMailPlexus(contacto.getPlexusMail());
+                empReq.setMailPlexus(contacto.getMailPlexus());
                 empReq.setMailClient(contacto.getMailClient());
                 empReq.setPhoneNumber(contacto.getPhoneNumber());
-                EmployeeCreateResponse empCreated =
-                        agendaService.createEmployee(empReq);
+
+                EmployeeCreateResponse empCreated = agendaService.createEmployee(empReq);
+
                 Integer employeeId = empCreated.getId();
                 employeeIdStr = "Contacto agregado con id " + employeeId;
                 algunExito = true;
-                // 2️⃣ Si NO tiene dispositivo asignado → pasamos al siguiente
+                //pasamos al siguiente si no tiene dispositivo asignado
                 if (contacto.getAssignedDevice() == null)
                     continue;
                 String sn = contacto.getAssignedDevice().getSerialNumber();
                 try {
-                    // 3️⃣ GET device
-                    DeviceDTO existing =
-                            agendaService.getDeviceBySerial(sn);
-                    // 3.1️⃣ si assignedTo != null → ya asignado → ERROR
+                    //el GET device
+                    DeviceDTO existing = agendaService.getDeviceBySerial(sn);
+
                     if (existing.getAssignedTo() != null) {
                         errores.add(new ContactErrorDto(employeeIdStr, "No se puede asignar el dispositivo " + sn + ". Ya está asignado a otro contacto con id " + existing.getAssignedTo()));
                         continue;
                     }
-                    // 3.2️⃣ assignedTo == null → asignar
+                    //assignedTo == null se asigna
                     UpdateAssignedToRequest assignReq = new UpdateAssignedToRequest();
                     assignReq.setSerialNumber(sn);
                     assignReq.setAssignedTo(employeeId);
                     try {
                         agendaService.assignDevice(assignReq);
                     } catch (Exception e) {
-                        errores.add(new ContactErrorDto(
-                                employeeIdStr,
-                                "Error técnico - No se pudo asignar el dispositivo " + sn
+                        errores.add(new ContactErrorDto(employeeIdStr, "Error técnico - No se pudo asignar el dispositivo " + sn
                         ));
                     }
                 } catch (HttpClientErrorException.NotFound nf) {
-                    // 4️⃣ Si GET devuelve 404 → crear device
+                    //Si GET devuelve 404 se crea device
                     try {
                         DeviceAdd devReq = new DeviceAdd();
                         devReq.setSerialNumber(contacto.getAssignedDevice().getSerialNumber());
@@ -107,23 +106,19 @@ public class AgendaController {
                         devReq.setAssignedTo(employeeId);
                         agendaService.createDevice(devReq);
                     } catch (Exception e) {
-                        errores.add(new ContactErrorDto(
-                                employeeIdStr,
-                                "Error al crear dispositivo " + sn
-                        ));
+                        e.printStackTrace();
+                        //errores.add(new ContactErrorDto(employeeIdStr, "Error al crear dispositivo " + sn));
+                        errores.add(new ContactErrorDto(employeeIdStr, e.getMessage()));
                     }
                 } catch (Exception e) {
-                    errores.add(new ContactErrorDto(
-                            employeeIdStr,
-                            "Error técnico - No se pudo obtener información del dispositivo " + contacto.getAssignedDevice().getSerialNumber()
-                    ));
+                    e.printStackTrace();
+                    //errores.add(new ContactErrorDto(employeeIdStr, "Error técnico - No se pudo obtener información del dispositivo " + contacto.getAssignedDevice().getSerialNumber()));
+                    errores.add(new ContactErrorDto(employeeIdStr, e.getMessage()));
                 }
             } catch (Exception e) {
-                errores.add(new ContactErrorDto(
-                        null,
-                        "Error al agregar al contacto " +
-                                contacto.getName() + " " + contacto.getSurname()
-                ));
+                e.printStackTrace();
+                //errores.add(new ContactErrorDto(null, "Error al agregar al contacto " + contacto.getName() + " " + contacto.getSurname()));
+                errores.add(new ContactErrorDto(null, e.getMessage()));
             }
         }
 
@@ -134,6 +129,37 @@ public class AgendaController {
             return ResponseEntity.status(204).body(new ErrorListResponse(errores));
         }
         return ResponseEntity.status(201).build();
+    }
+
+
+    @PutMapping("/employees")
+    public ResponseEntity<?> updateContacts(
+            @RequestBody UpdateEmployeesRequest request) {
+
+        List<ContactErrorDto> errors = new ArrayList<>();
+        boolean anySuccess = false;
+
+        for (EmployeeInputDTO emp : request.getEmployees()) {
+            try {
+                agendaService.updateEmployee(emp);
+                anySuccess = true;
+            } catch (Exception e) {
+                errors.add(new ContactErrorDto(
+                        String.valueOf(emp.getEmployeeId()),
+                        e.getMessage()
+                ));
+            }
+        }
+
+        if (!anySuccess) {
+            return ResponseEntity.status(500).body(new ErrorListResponse(errors));
+        }
+
+        if (!errors.isEmpty()) {
+            return ResponseEntity.status(206).body(new ErrorListResponse(errors));
+        }
+        return ResponseEntity.ok(Map.of("message", "Contactos actualizados correctamente")
+        );
     }
 
 

@@ -14,7 +14,9 @@ public interface ListContactsService {
 
     EmployeeCreateResponse createEmployee(EmployeeInputDTO req);
     DeviceDTO getDeviceBySerial(String serialNumber);
-    DeviceDTO createDevice(DeviceAdd req);
+    void createDevice(DeviceAdd req);
     DeviceDTO assignDevice(UpdateAssignedToRequest req);
+    void updateEmployee(EmployeeInputDTO req);
+
 
 }

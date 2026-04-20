@@ -10,7 +10,7 @@ import lombok.Setter;
 public class EmployeeAdd {
     private String name;
     private String surname;
-    private String plexusMail;
+    private String mailPlexus;
     private String mailClient;
     private String phoneNumber;
     private AssignedDeviceInputDTO assignedDevice;
