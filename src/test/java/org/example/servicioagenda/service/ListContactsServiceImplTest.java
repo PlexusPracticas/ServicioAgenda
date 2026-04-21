@@ -39,7 +39,7 @@ class ListContactsServiceImplTest {
 
 
     @Test
-    void listEmployees_emptyAgenda() {
+    void listarEmpleados_sinResultados() {
 
         Mockito.doNothing()
                 .when(tokenService)
@@ -67,7 +67,7 @@ class ListContactsServiceImplTest {
     }
 
     @Test
-    void listEmployees_deviceNotFound_setsNull() {
+    void listarEmpleados_sinDispositivo() {
 
         Mockito.doNothing().when(tokenService).decrypt(anyString());
 
@@ -106,7 +106,7 @@ class ListContactsServiceImplTest {
     }
 
     @Test
-    void listEmployees_deviceAssigned_ok() {
+    void listarEmpleados_conDispositivo() {
 
         doNothing().when(tokenService).decrypt(anyString());
 
@@ -150,7 +150,7 @@ class ListContactsServiceImplTest {
 
 
     @Test
-    void filterEmployees_emptyAgenda() {
+    void filtrarEmpleados_sinResultados() {
 
         doNothing().when(tokenService).decrypt(anyString());
 
@@ -175,7 +175,7 @@ class ListContactsServiceImplTest {
 
 
     @Test
-    void filterEmployees_ok_withDevice() {
+    void filtrarEmpleados_conDispositivo() {
         doNothing().when(tokenService).decrypt(anyString());
         EmployeeExternalDTO empExternal = new EmployeeExternalDTO();
         empExternal.setId(2);
@@ -221,7 +221,7 @@ class ListContactsServiceImplTest {
 
 
     @Test
-    void createEmployee_noEmployees_throwsException() {
+    void crearEmpleado_sinRespuesta_error() {
 
         doNothing().when(tokenService).decrypt(anyString());
 
@@ -237,7 +237,7 @@ class ListContactsServiceImplTest {
 
 
     @Test
-    void getDeviceBySerial_ok() {
+    void obtenerDispositivo_porSerial_ok() {
         doNothing().when(tokenService).decrypt(anyString());
         DeviceDTO device = new DeviceDTO();
         device.setAssignedTo(1);
