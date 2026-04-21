@@ -45,7 +45,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void listAgendaEmployees_ok() throws Exception {
+    void listarEmpleados_ok() throws Exception {
         AgendaResponse mockResponse = new AgendaResponse();
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
         Mockito.when(agendaService.listEmployees(TOKEN, 0, 10)).thenReturn(mockResponse);
@@ -54,7 +54,7 @@ class AgendaControllerTest {
     }
 
     @Test
-    void listAgendaEmployees_defaultPagination() throws Exception {
+    void listarAgendaEmpleados_paginacionDefecto() throws Exception {
 
         AgendaResponse mockResponse = new AgendaResponse();
 
@@ -72,7 +72,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void listAgendaEmployees_internalError() throws Exception {
+    void listarEmpleados_errorInterno() throws Exception {
 
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
 
@@ -88,7 +88,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void filterAgendaEmployees_ok() throws Exception {
+    void filtrarEmpleados_ok() throws Exception {
 
         AgendaResponse mockResponse = new AgendaResponse();
 
@@ -113,7 +113,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void filterAgendaEmployees_defaultPagination() throws Exception {
+    void filtrarEmpleados_paginacionDefecto() throws Exception {
 
         AgendaResponse mockResponse = new AgendaResponse();
 
@@ -136,7 +136,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void agregarContactos_ok_201_real() throws Exception {
+    void agregarContacto_ok() throws Exception {
 
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
 
@@ -180,7 +180,7 @@ class AgendaControllerTest {
     }
 
     @Test
-    void agregarContactos_deviceAlreadyAssigned_204() throws Exception {
+    void agregarContacto_dispositivoOcupado_204() throws Exception {
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
         EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
         empResponse.setId(1);
@@ -201,7 +201,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void agregarContactos_allFail_500() throws Exception {
+    void agregarContacto_errorTotal_500() throws Exception {
 
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
 
@@ -225,7 +225,7 @@ class AgendaControllerTest {
     }
 
     @Test
-    void agregarContactos_withoutDevice_returns201() throws Exception {
+    void agregarContacto_sinDispositivo_201() throws Exception {
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
         EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
         empResponse.setId(5);
@@ -240,7 +240,7 @@ class AgendaControllerTest {
 
 
     @Test
-    void agregarContactos_deviceNotFound_createDeviceOk_returns201() throws Exception {
+    void agregarContacto_creaDispositivo201() throws Exception {
 
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
 
@@ -281,7 +281,7 @@ class AgendaControllerTest {
     }
 
     @Test
-    void agregarContactos_deviceNotFound_createDeviceFails_returns204() throws Exception {
+    void agregarContacto_errorAlCrearDispositivo_204() throws Exception {
         Mockito.doNothing().when(tokenService).decrypt(TOKEN);
         EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
         empResponse.setId(8);
