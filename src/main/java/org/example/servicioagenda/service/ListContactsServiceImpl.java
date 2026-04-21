@@ -1,5 +1,7 @@
 package org.example.servicioagenda.service;
 
+import org.example.servicioagenda.dto.request.UpdateEmployeesRequest;
+import org.example.servicioagenda.security.TokenFilter;
 import org.example.servicioagenda.dto.request.DeviceAdd;
 import org.example.servicioagenda.dto.request.EmployeeInputDTO;
 import org.example.servicioagenda.dto.request.UpdateAssignedToRequest;
@@ -7,6 +9,10 @@ import org.example.servicioagenda.dto.response.*;
 import org.example.servicioagenda.mapper.AgendaMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.crossstore.ChangeSetPersister;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
@@ -18,38 +24,37 @@ import java.util.Map;
 @Service
 public class ListContactsServiceImpl implements ListContactsService {
 
-    @Autowired
     private RestTemplate restTemplate;
 
-    @Autowired
     private AgendaMapper mapper;
 
+    private final TokenService tokenService;
+
+    public ListContactsServiceImpl(RestTemplate restTemplate, AgendaMapper mapper, TokenService tokenService) {
+        this.restTemplate = restTemplate;
+        this.mapper = mapper;
+        this.tokenService = tokenService;
+    }
+
     @Override
-    public AgendaResponse listEmployees(int page, int size) {
+    public AgendaResponse listEmployees(String token, int page, int size) {
         String urlEmployees = "http://localhost:8080/employees?page=" + page + "&size=" + size;
+
         //String urlEmployees = "http://localhost:8080/employees?page="+page+"&size="+size;
-        System.out.println("URL EMPLOYEES → " + urlEmployees);
-        EmployeeServiceResponse external = restTemplate.getForObject(urlEmployees, EmployeeServiceResponse.class);
-        if (external.getEmployees() == null || external.getEmployees().isEmpty()) {
-            AgendaResponse empty = new AgendaResponse();
-            empty.setEmployee(List.of());
-            empty.setTotalPages(0);
-            empty.setTotalElements(0);
-            return empty;
+        //EmployeeServiceResponse external = restTemplate.getForObject(urlEmployees, EmployeeServiceResponse.class);
+
+        HttpEntity<?> entity = buildEntity(token, null);
+        EmployeeServiceResponse external = restTemplate.exchange(urlEmployees, HttpMethod.GET, entity, EmployeeServiceResponse.class).getBody();
+        if (external == null || external.getEmployees().isEmpty()) {
+            return emptyAgenda();
         }
-        List<EmployeeAgendaDTO> contactos = external.getEmployees()
-                .stream()
-                .map(mapper::toAgenda)
-                .toList();
+        List<EmployeeAgendaDTO> contactos = external.getEmployees().stream().map(mapper::toAgenda).toList();
         for (EmployeeAgendaDTO empleado : contactos) {
             String urlDevice = "http://localhost:8081/devices/assignation/" + empleado.getEmployeeId();
-
             try {
-                DeviceDTO device = restTemplate.getForObject(urlDevice, DeviceDTO.class);
+                DeviceDTO device = restTemplate.exchange(urlDevice, HttpMethod.GET, entity, DeviceDTO.class).getBody();
                 empleado.setAssignedDevice(device);
             } catch (HttpClientErrorException.NotFound e) {
-                empleado.setAssignedDevice(null);
-            } catch (Exception e) {
                 empleado.setAssignedDevice(null);
             }
         }
@@ -58,202 +63,130 @@ public class ListContactsServiceImpl implements ListContactsService {
         response.setTotalElements(external.getTotalElements());
         response.setTotalPages(external.getTotalPages());
         return response;
+
     }
 
 
     @Override
-    public AgendaResponse filterEmployees(String filterValue, String filterType, int page, int size) {
+    public AgendaResponse filterEmployees(String token, String filterValue, String filterType, int page, int size) {
         String urlEmployees = "http://localhost:8080/employees/search?" + filterType + "=" + filterValue + "&page=" + page + "&size=" + size;
-
-        EmployeeServiceResponse external = restTemplate.getForObject(urlEmployees, EmployeeServiceResponse.class);
-
-        // Si no hay resultados nos da lista vacía
-        if (external.getEmployees() == null || external.getEmployees().isEmpty()) {
-            AgendaResponse empty = new AgendaResponse();
-            empty.setEmployee(List.of());
-            empty.setTotalPages(0);
-            empty.setTotalElements(0);
-            return empty;
+        HttpEntity<?> entity = buildEntity(token, null);
+        EmployeeServiceResponse external = restTemplate.exchange(urlEmployees, HttpMethod.GET, entity, EmployeeServiceResponse.class).getBody();
+        if (external == null || external.getEmployees().isEmpty()) {
+            return emptyAgenda();
         }
-
-        // Mapeamos
-        List<EmployeeAgendaDTO> contactos = external.getEmployees()
-                .stream()
-                .map(mapper::toAgenda)
-                .toList();
-
-        //obtenemos un dispositivo asignado por empleado
+        List<EmployeeAgendaDTO> contactos = external.getEmployees().stream().map(mapper::toAgenda).toList();
         for (EmployeeAgendaDTO empleado : contactos) {
             String urlDevice = "http://localhost:8081/devices/assignation/" + empleado.getEmployeeId();
             try {
-                DeviceDTO device = restTemplate.getForObject(urlDevice, DeviceDTO.class);
+                DeviceDTO device = restTemplate.exchange(urlDevice, HttpMethod.GET, entity, DeviceDTO.class).getBody();
                 empleado.setAssignedDevice(device);
-
             } catch (HttpClientErrorException.NotFound e) {
-                empleado.setAssignedDevice(null);  //continua
-
-            } catch (Exception e) {
-                throw e; //devuelve 500
+                empleado.setAssignedDevice(null);
             }
         }
         AgendaResponse response = new AgendaResponse();
         response.setEmployee(contactos);
-        response.setTotalPages(external.getTotalPages());
         response.setTotalElements(external.getTotalElements());
-
+        response.setTotalPages(external.getTotalPages());
         return response;
+
     }
 
 
     @Override
-    public EmployeeCreateResponse createEmployee(EmployeeInputDTO req) {
+    public EmployeeCreateResponse createEmployee(String token, EmployeeInputDTO req) {
         String url = "http://localhost:8080/employees";
-
-        //crea el body que espera el microservicio employees
         Map<String, Object> body = new HashMap<>();
         body.put("employees", List.of(req));
-
-        //devuelve una lista de empleados creados
-        EmployeeCreateResponse[] response =
-                restTemplate.postForObject(
-                        url,
-                        body,
-                        EmployeeCreateResponse[].class
-                );
-
-        //devolvemos el primero
+        HttpEntity<?> entity = buildEntity(token, body);
+        EmployeeCreateResponse[] response = restTemplate.exchange(url, HttpMethod.POST, entity, EmployeeCreateResponse[].class).getBody();
+        if (response == null || response.length == 0) {
+            throw new RuntimeException("No se creó ningún empleado");
+        }
         return response[0];
 
     }
 
 
     @Override
-    public DeviceDTO getDeviceBySerial(String serialNumber) {
+    public DeviceDTO getDeviceBySerial(String token, String serialNumber) {
         String url = "http://localhost:8081/devices/serial-number/" + serialNumber;
-        return restTemplate.getForObject(url, DeviceDTO.class);
+
+        HttpEntity<?> entity = buildEntity(token, null);
+        return restTemplate.exchange(url, HttpMethod.GET, entity, DeviceDTO.class).getBody();
+
     }
 
     @Override
-    public void createDevice(DeviceAdd devReq) {
+    public void createDevice(String token, DeviceAdd devReq) {
 
         String url = "http://localhost:8081/devices";
 
         Map<String, Object> body = new HashMap<>();
         body.put("devices", List.of(devReq));
-
-        // llama al microservicio devices
-        restTemplate.postForObject(url, body, Object.class);
+        HttpEntity<?> entity = buildEntity(token, body);
+        restTemplate.exchange(url, HttpMethod.POST, entity, Object.class);
 
     }
 
     @Override
-    public DeviceDTO assignDevice(UpdateAssignedToRequest req) {
+    public DeviceDTO assignDevice(String token, UpdateAssignedToRequest req) {
         String url = "http://localhost:8081/devices";
-        restTemplate.put(url, req);
-        return null;
+
+        HttpEntity<?> entity = buildEntity(token, req);
+        return restTemplate.exchange(url, HttpMethod.PUT, entity, DeviceDTO.class).getBody();
+
     }
 
 
     @Override
-    public void updateEmployee(EmployeeInputDTO emp) {
+    public void updateEmployee(String token, EmployeeInputDTO emp) {
 
-        Integer employeeId = emp.getEmployeeId();
-        String sn = null;
 
-        if (employeeId == null) {
+        if (emp.getEmployeeId() == null) {
             throw new RuntimeException("employeeId es obligatorio");
         }
 
-        //DELETE EMPLOYEe
         if (Boolean.TRUE.equals(emp.getDeleteEmployee())) {
 
-            try {
-                DeviceDTO device = restTemplate.getForObject("http://localhost:8081/devices/assignation/" + employeeId, DeviceDTO.class);
+            HttpEntity<?> entity = buildEntity(token, null);
 
-                if (device != null) {
-                    Map<String, Object> dev = new HashMap<>();
-                    dev.put("assignedTo", null);
-
-                    Map<String, Object> body = new HashMap<>();
-                    body.put("devices", List.of(dev));
-
-
-                    restTemplate.put("http://localhost:8081/devices", body);
-                }
-            } catch (HttpClientErrorException.NotFound e) {
-                System.out.println("error");
-            }
-
-            restTemplate.delete("http://localhost:8080/employees/id/" + employeeId);
+            restTemplate.exchange(
+                    "http://localhost:8080/employees/id/" + emp.getEmployeeId(),
+                    HttpMethod.DELETE,
+                    entity,
+                    Void.class
+            );
             return;
         }
 
-        //UPDATE EMPLOYEE
-        Map<String, Object> body = new HashMap<>();
-        body.put("employees", List.of(emp));
-        restTemplate.put("http://localhost:8080/employees", body);
 
-        //DELETE ASSIGNED DEVICE
-        if (Boolean.TRUE.equals(emp.getDeleteAssignedDevice())) {
-            try {
-                DeviceDTO device = restTemplate.getForObject("http://localhost:8081/devices/assignation/" + employeeId, DeviceDTO.class);
+        HttpEntity<?> entity = buildEntity(token, emp);
 
-                if (device != null && emp.getAddDevice() != null) {
-                    sn = emp.getAddDevice().getSerialNumber();
-                }
-
-                if (sn != null) {
-                    Map<String, Object> bodyDev = new HashMap<>();
-                    bodyDev.put("serialNumber", sn);
-                    bodyDev.put("assignedTo", null);
-
-                    restTemplate.put("http://localhost:8081/devices", bodyDev);
-                }
-
-            } catch (HttpClientErrorException.NotFound e) {
-                // seguimos
-            }
-        }
-
-        //ADD DEVICE
-        if (emp.getAddDevice() != null) {
-
-            sn = emp.getAddDevice().getSerialNumber(); //
-
-            try {
-                DeviceDTO existing = restTemplate.getForObject("http://localhost:8081/devices/serial-number/" + sn, DeviceDTO.class);
-
-                if (existing.getAssignedTo() != null) {
-                    throw new RuntimeException("No se puede asignar el dispositivo " + sn + " ya está asignado");
-                }
-
-
-                Map<String, Object> device = new HashMap<>();
-                device.put("serialNumber", sn);
-                device.put("assignedTo", employeeId);
-
-                Map<String, Object> bodydev = new HashMap<>();
-                bodydev.put("devices", List.of(device));
-
-                restTemplate.put("http://localhost:8081/devices", bodydev);
-
-
-            } catch (HttpClientErrorException.NotFound e) {
-
-                DeviceAdd dev = new DeviceAdd();
-                dev.setSerialNumber(sn);
-                dev.setBrand(emp.getAddDevice().getBrand());
-                dev.setModel(emp.getAddDevice().getModel());
-                dev.setOperatingSystem(emp.getAddDevice().getOperatingSystem());
-                dev.setAssignedTo(employeeId);
-
-                Map<String, Object> bodyDev = new HashMap<>();
-                bodyDev.put("devices", List.of(dev));
-
-                restTemplate.postForObject("http://localhost:8081/devices", bodyDev, Object.class);
-            }
-        }
+        restTemplate.exchange(
+                "http://localhost:8080/employees/id/"+emp.getEmployeeId(),
+                HttpMethod.PUT,
+                entity,
+                Void.class
+        );
     }
 
+    private HttpEntity<?> buildEntity(String token, Object body) {
+        tokenService.decrypt(token); // validación adicional
 
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("TOKEN", token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        return body == null ? new HttpEntity<>(headers) : new HttpEntity<>(body, headers);
+    }
+
+    private AgendaResponse emptyAgenda() {
+        AgendaResponse empty = new AgendaResponse();
+        empty.setEmployee(List.of());
+        empty.setTotalElements(0);
+        empty.setTotalPages(0);
+        return empty;
+    }
 }

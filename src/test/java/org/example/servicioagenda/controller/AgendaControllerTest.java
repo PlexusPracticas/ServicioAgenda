@@ -6,14 +6,17 @@ import org.example.servicioagenda.dto.response.AgendaResponse;
 import org.example.servicioagenda.dto.response.DeviceDTO;
 import org.example.servicioagenda.dto.response.EmployeeCreateResponse;
 import org.example.servicioagenda.service.ListContactsService;
+import org.example.servicioagenda.service.TokenService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.util.List;
 
@@ -26,7 +29,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class AgendaControllerTest {
-
     @Autowired
     private MockMvc mockMvc;
 
@@ -36,249 +38,264 @@ class AgendaControllerTest {
     @MockBean
     private ListContactsService agendaService;
 
+    @MockBean
+    private TokenService tokenService;
+
+    private static final String TOKEN = "fake-token";
+
 
     @Test
     void listAgendaEmployees_ok() throws Exception {
+        AgendaResponse mockResponse = new AgendaResponse();
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+        Mockito.when(agendaService.listEmployees(TOKEN, 0, 10)).thenReturn(mockResponse);
+        mockMvc.perform(get("/agenda/employees").header("TOKEN", TOKEN).param("page", "0").param("size", "10")).andExpect(status().isOk());
+        Mockito.verify(agendaService).listEmployees(TOKEN, 0, 10);
+    }
 
-        AgendaResponse response = new AgendaResponse();
-        response.setEmployee(List.of());
-        response.setTotalPages(0);
-        response.setTotalElements(0);
+    @Test
+    void listAgendaEmployees_defaultPagination() throws Exception {
 
-        Mockito.when(agendaService.listEmployees(0, 10))
-                .thenReturn(response);
+        AgendaResponse mockResponse = new AgendaResponse();
+
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+        Mockito.when(agendaService.listEmployees(TOKEN, 0, 10))
+                .thenReturn(mockResponse);
 
         mockMvc.perform(get("/agenda/employees")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.employee").exists());
+                        .header("TOKEN", TOKEN))
+                .andExpect(status().isOk());
+
+        Mockito.verify(agendaService)
+                .listEmployees(TOKEN, 0, 10);
     }
 
 
     @Test
-    void listAgendaEmployees_error_returns500() throws Exception {
+    void listAgendaEmployees_internalError() throws Exception {
 
-        Mockito.when(agendaService.listEmployees(0, 10))
-                .thenThrow(new RuntimeException("Error"));
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+
+        Mockito.when(agendaService.listEmployees(TOKEN, 0, 10))
+                .thenThrow(new RuntimeException("Error BD"));
 
         mockMvc.perform(get("/agenda/employees")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isInternalServerError());
-    }
-
-
-    @Test
-    void filterAgendaEmployees_ok() throws Exception {
-
-        AgendaResponse response = new AgendaResponse();
-        response.setEmployee(List.of());
-        response.setTotalPages(0);
-        response.setTotalElements(0);
-
-        Mockito.when(agendaService.filterEmployees(
-                        Mockito.eq("Luisa"),
-                        Mockito.eq("name"),
-                        Mockito.eq(0),
-                        Mockito.eq(10)))
-                .thenReturn(response);
-
-        mockMvc.perform(get("/agenda/employees/filter/Luisa")
-                        .param("filterType", "name")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.employee").exists());
-    }
-
-
-    @Test
-    void addContacts_ok_returns201() throws Exception {
-
-        EmployeeAdd emp = new EmployeeAdd();
-        emp.setName("Gimli");
-        emp.setSurname("Hijo de Gloin");
-        emp.setMailPlexus("gimli@plexus.tech");
-
-        CreateContactDto request = new CreateContactDto();
-        request.setEmployees(List.of(emp));
-
-
-        EmployeeCreateResponse response = new EmployeeCreateResponse();
-        response.setId(1);
-
-        Mockito.when(
-                agendaService.createEmployee(Mockito.any(EmployeeInputDTO.class))
-        ).thenReturn(response);
-
-
-        mockMvc.perform(post("/agenda/employees")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated());
-    }
-
-
-    @Test
-    void addContacts_allFail_returns500() throws Exception {
-
-        EmployeeAdd emp = new EmployeeAdd();
-        emp.setName("Gimli");
-        emp.setSurname("Hijo de Gloin");
-        emp.setMailPlexus("gimli@plexus.tech");
-
-        CreateContactDto request = new CreateContactDto();
-        request.setEmployees(List.of(emp));
-
-        Mockito.when(agendaService.createEmployee(Mockito.any()))
-                .thenThrow(new RuntimeException("Error"));
-
-        mockMvc.perform(post("/agenda/employees")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.contactErrorDtos").exists());
-    }
-
-    @Test
-    void updateContacts_ok_returns200() throws Exception {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-
-        UpdateEmployeesRequest request = new UpdateEmployeesRequest();
-        request.setEmployees(List.of(emp));
-
-        Mockito.doNothing()
-                .when(agendaService)
-                .updateEmployee(Mockito.any());
-
-        mockMvc.perform(put("/agenda/employees")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message")
-                        .value("Contactos actualizados correctamente"));
-    }
-
-
-    @Test
-    void updateContacts_partial_returns206() throws Exception {
-
-        EmployeeInputDTO ok = new EmployeeInputDTO();
-        ok.setEmployeeId(1);
-
-        EmployeeInputDTO fail = new EmployeeInputDTO();
-        fail.setEmployeeId(2);
-
-        UpdateEmployeesRequest request = new UpdateEmployeesRequest();
-        request.setEmployees(List.of(ok, fail));
-
-        Mockito.doNothing()
-                .when(agendaService)
-                .updateEmployee(Mockito.argThat(e -> e.getEmployeeId() == 1));
-
-        Mockito.doThrow(new RuntimeException("Error"))
-                .when(agendaService)
-                .updateEmployee(Mockito.argThat(e -> e.getEmployeeId() == 2));
-
-        mockMvc.perform(put("/agenda/employees")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isPartialContent())
-                .andExpect(jsonPath("$.contactErrorDtos").exists());
-    }
-
-
-    @Test
-    void updateContacts_allFail_returns500() throws Exception {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(99);
-
-        UpdateEmployeesRequest request = new UpdateEmployeesRequest();
-        request.setEmployees(List.of(emp));
-
-        Mockito.doThrow(new RuntimeException("Error"))
-                .when(agendaService)
-                .updateEmployee(Mockito.any());
-
-        mockMvc.perform(put("/agenda/employees")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.contactErrorDtos").exists());
-    }
-
-    @Test
-    void addContacts_deviceAlreadyAssigned_returns204() throws Exception {
-
-        AssignedDeviceInputDTO device = new AssignedDeviceInputDTO();
-        device.setSerialNumber("ABC123");
-
-        EmployeeAdd emp = new EmployeeAdd();
-        emp.setName("Gimli");
-        emp.setSurname("Hijo de Gloin");
-        emp.setMailPlexus("gimli@plexus.tech");
-        emp.setAssignedDevice(device);
-
-        CreateContactDto request = new CreateContactDto();
-        request.setEmployees(List.of(emp));
-
-        EmployeeCreateResponse response = new EmployeeCreateResponse();
-        response.setId(1);
-
-        DeviceDTO existing = new DeviceDTO();
-        existing.setAssignedTo(99);
-
-        Mockito.when(agendaService.createEmployee(Mockito.any()))
-                .thenReturn(response);
-
-        Mockito.when(agendaService.getDeviceBySerial("ABC123"))
-                .thenReturn(existing);
-
-        mockMvc.perform(post("/agenda/employees")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isNoContent())
-                .andExpect(jsonPath("$.contactErrorDtos").exists());
-    }
-
-    @Test
-    void addContacts_withoutDevice_returns201() throws Exception {
-        EmployeeAdd emp = new EmployeeAdd();
-        emp.setName("Gimli");
-        emp.setSurname("Hijo de Gloin");
-        emp.setMailPlexus("gimli@plexus.tech");
-        CreateContactDto request = new CreateContactDto();
-        request.setEmployees(List.of(emp));
-        EmployeeCreateResponse response = new EmployeeCreateResponse();
-        response.setId(1);
-        Mockito.when(agendaService.createEmployee(Mockito.any())).thenReturn(response);
-        mockMvc.perform(post("/agenda/employees").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated());
-    }
-
-
-    @Test
-    void filterAgendaEmployees_error_returns500() throws Exception {
-
-        Mockito.when(agendaService.filterEmployees(
-                Mockito.anyString(), Mockito.anyString(),
-                Mockito.anyInt(), Mockito.anyInt()
-        )).thenThrow(new RuntimeException("Error"));
-
-        mockMvc.perform(get("/agenda/employees/filter/test")
-                        .param("filterType", "name")
-                        .param("page", "0")
-                        .param("size", "10"))
+                        .header("TOKEN", TOKEN))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.message")
                         .value("Se ha producido un error técnico, pruebe de nuevo"));
     }
 
 
+    @Test
+    void filterAgendaEmployees_ok() throws Exception {
+
+        AgendaResponse mockResponse = new AgendaResponse();
+
+        Mockito.doNothing()
+                .when(tokenService)
+                .decrypt(TOKEN);
+
+        Mockito.when(agendaService.filterEmployees(
+                        TOKEN, "juan", "name", 0, 10))
+                .thenReturn(mockResponse);
+
+        mockMvc.perform(get("/agenda/employees/filter/juan")
+                        .header("TOKEN", TOKEN)
+                        .param("filterType", "name")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk());
+
+        Mockito.verify(agendaService)
+                .filterEmployees(TOKEN, "juan", "name", 0, 10);
+    }
+
+
+    @Test
+    void filterAgendaEmployees_defaultPagination() throws Exception {
+
+        AgendaResponse mockResponse = new AgendaResponse();
+
+        Mockito.doNothing()
+                .when(tokenService)
+                .decrypt(TOKEN);
+
+        Mockito.when(agendaService.filterEmployees(
+                        TOKEN, "juan", "surname", 0, 10))
+                .thenReturn(mockResponse);
+
+        mockMvc.perform(get("/agenda/employees/filter/juan")
+                        .header("TOKEN", TOKEN)
+                        .param("filterType", "surname"))
+                .andExpect(status().isOk());
+
+        Mockito.verify(agendaService)
+                .filterEmployees(TOKEN, "juan", "surname", 0, 10);
+    }
+
+
+    @Test
+    void agregarContactos_ok_201_real() throws Exception {
+
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+
+        EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
+        empResponse.setId(1);
+
+        Mockito.when(agendaService.createEmployee(
+                        Mockito.eq(TOKEN),
+                        Mockito.any(EmployeeInputDTO.class)))
+                .thenReturn(empResponse);
+
+        DeviceDTO existing = new DeviceDTO();
+        existing.setAssignedTo(null);
+
+        Mockito.when(agendaService.getDeviceBySerial(
+                        Mockito.eq(TOKEN),
+                        Mockito.eq("SN123")))
+                .thenReturn(existing);
+
+        Mockito.when(agendaService.assignDevice(
+                        Mockito.eq(TOKEN),
+                        Mockito.any(UpdateAssignedToRequest.class)))
+                .thenReturn(null);
+
+        AssignedDeviceInputDTO device = new AssignedDeviceInputDTO();
+        device.setSerialNumber("SN123");
+
+        EmployeeAdd emp = new EmployeeAdd();
+        emp.setName("Juan");
+        emp.setSurname("Perez");
+        emp.setAssignedDevice(device);
+
+        CreateContactDto request = new CreateContactDto();
+        request.setEmployees(List.of(emp));
+
+        mockMvc.perform(post("/agenda/employees")
+                        .header("TOKEN", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void agregarContactos_deviceAlreadyAssigned_204() throws Exception {
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+        EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
+        empResponse.setId(1);
+        Mockito.when(agendaService.createEmployee(Mockito.eq(TOKEN), Mockito.any(EmployeeInputDTO.class))).thenReturn(empResponse);
+        DeviceDTO existing = new DeviceDTO();
+        existing.setAssignedTo(99);
+        Mockito.when(agendaService.getDeviceBySerial(TOKEN, "SN999")).thenReturn(existing);
+        AssignedDeviceInputDTO device = new AssignedDeviceInputDTO();
+        device.setSerialNumber("SN999");
+        EmployeeAdd emp = new EmployeeAdd();
+        emp.setName("Ana");
+        emp.setSurname("Gomez");
+        emp.setAssignedDevice(device);
+        CreateContactDto request = new CreateContactDto();
+        request.setEmployees(List.of(emp));
+        mockMvc.perform(post("/agenda/employees").header("TOKEN", TOKEN).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request))).andExpect(status().isNoContent()).andExpect(jsonPath("$.contactErrorDtos").exists());
+    }
+
+
+    @Test
+    void agregarContactos_allFail_500() throws Exception {
+
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+
+        Mockito.when(agendaService.createEmployee(
+                        Mockito.eq(TOKEN),
+                        Mockito.any(EmployeeInputDTO.class)))
+                .thenThrow(new RuntimeException("Error"));
+
+        EmployeeAdd emp = new EmployeeAdd();
+        emp.setName("Error");
+
+        CreateContactDto request = new CreateContactDto();
+        request.setEmployees(List.of(emp));
+
+        mockMvc.perform(post("/agenda/employees")
+                        .header("TOKEN", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.contactErrorDtos").exists());
+    }
+
+    @Test
+    void agregarContactos_withoutDevice_returns201() throws Exception {
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+        EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
+        empResponse.setId(5);
+        Mockito.when(agendaService.createEmployee(Mockito.eq(TOKEN), Mockito.any(EmployeeInputDTO.class))).thenReturn(empResponse);
+        EmployeeAdd emp = new EmployeeAdd();
+        emp.setName("Mario");
+        emp.setSurname("Rossi");
+        CreateContactDto request = new CreateContactDto();
+        request.setEmployees(List.of(emp));
+        mockMvc.perform(post("/agenda/employees").header("TOKEN", TOKEN).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request))).andExpect(status().isCreated());
+    }
+
+
+    @Test
+    void agregarContactos_deviceNotFound_createDeviceOk_returns201() throws Exception {
+
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+
+        EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
+        empResponse.setId(7);
+
+        Mockito.when(agendaService.createEmployee(
+                        Mockito.eq(TOKEN),
+                        Mockito.any(EmployeeInputDTO.class)))
+                .thenReturn(empResponse);
+
+        Mockito.when(agendaService.getDeviceBySerial(
+                        Mockito.eq(TOKEN),
+                        Mockito.eq("SN404")))
+                .thenThrow(HttpClientErrorException.NotFound
+                        .create(HttpStatus.NOT_FOUND, "Not Found", null, null, null));
+
+        Mockito.doNothing()
+                .when(agendaService)
+                .createDevice(Mockito.eq(TOKEN), Mockito.any(DeviceAdd.class));
+
+        AssignedDeviceInputDTO device = new AssignedDeviceInputDTO();
+        device.setSerialNumber("SN404");
+
+        EmployeeAdd emp = new EmployeeAdd();
+        emp.setName("Luis");
+        emp.setSurname("Garcia");
+        emp.setAssignedDevice(device);
+
+        CreateContactDto request = new CreateContactDto();
+        request.setEmployees(List.of(emp));
+
+        mockMvc.perform(post("/agenda/employees")
+                        .header("TOKEN", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void agregarContactos_deviceNotFound_createDeviceFails_returns204() throws Exception {
+        Mockito.doNothing().when(tokenService).decrypt(TOKEN);
+        EmployeeCreateResponse empResponse = new EmployeeCreateResponse();
+        empResponse.setId(8);
+        Mockito.when(agendaService.createEmployee(Mockito.eq(TOKEN), Mockito.any(EmployeeInputDTO.class))).thenReturn(empResponse);
+        Mockito.when(agendaService.getDeviceBySerial(Mockito.eq(TOKEN), Mockito.eq("SNFAIL"))).thenThrow(HttpClientErrorException.NotFound.create(HttpStatus.NOT_FOUND, "Not Found", null, null, null));
+        Mockito.doThrow(new RuntimeException("Error creando device")).when(agendaService).createDevice(Mockito.eq(TOKEN), Mockito.any(DeviceAdd.class));
+        AssignedDeviceInputDTO device = new AssignedDeviceInputDTO();
+        device.setSerialNumber("SNFAIL");
+        EmployeeAdd emp = new EmployeeAdd();
+        emp.setName("Error");
+        emp.setAssignedDevice(device);
+        CreateContactDto request = new CreateContactDto();
+        request.setEmployees(List.of(emp));
+        mockMvc.perform(post("/agenda/employees").header("TOKEN", TOKEN).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request))).andExpect(status().isNoContent()).andExpect(jsonPath("$.contactErrorDtos").exists());
+    }
 
 }

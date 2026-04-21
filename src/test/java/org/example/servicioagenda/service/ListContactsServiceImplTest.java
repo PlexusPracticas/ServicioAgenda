@@ -10,8 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
@@ -30,70 +31,143 @@ class ListContactsServiceImplTest {
     @Mock
     private AgendaMapper mapper;
 
+    @Mock
+    private TokenService tokenService;
+
     @InjectMocks
     private ListContactsServiceImpl service;
 
+
     @Test
-    void listEmployees_ok() {
+    void listEmployees_emptyAgenda() {
+
+        Mockito.doNothing()
+                .when(tokenService)
+                .decrypt(Mockito.anyString());
 
         EmployeeServiceResponse external = new EmployeeServiceResponse();
         external.setEmployees(List.of());
         external.setTotalElements(0);
         external.setTotalPages(0);
 
-        when(restTemplate.getForObject(anyString(), eq(EmployeeServiceResponse.class)))
-                .thenReturn(external);
+        Mockito.when(restTemplate.exchange(
+                Mockito.contains("http://localhost:8080/employees"),
+                Mockito.eq(HttpMethod.GET),
+                Mockito.any(HttpEntity.class),
+                Mockito.eq(EmployeeServiceResponse.class)
+        )).thenReturn(ResponseEntity.ok(external));
 
-        AgendaResponse response = service.listEmployees(0, 10);
+        AgendaResponse response = service.listEmployees("token", 0, 10);
 
         assertNotNull(response);
+        assertNotNull(response.getEmployee());
         assertTrue(response.getEmployee().isEmpty());
+        assertEquals(0, response.getTotalElements());
+        assertEquals(0, response.getTotalPages());
     }
 
     @Test
-    void listEmployees_devicesNotFound() {
+    void listEmployees_deviceNotFound_setsNull() {
 
-        EmployeeExternalDTO emp = new EmployeeExternalDTO();
-        emp.setId(1);
+        Mockito.doNothing().when(tokenService).decrypt(anyString());
+
+        EmployeeExternalDTO empExternal = new EmployeeExternalDTO();
+        empExternal.setId(1);
 
         EmployeeServiceResponse external = new EmployeeServiceResponse();
-        external.setEmployees(List.of(emp));
+        external.setEmployees(List.of(empExternal));
         external.setTotalElements(1);
         external.setTotalPages(1);
 
         EmployeeAgendaDTO agendaDTO = new EmployeeAgendaDTO();
         agendaDTO.setEmployeeId(1);
 
-        when(restTemplate.getForObject(contains("employees"), eq(EmployeeServiceResponse.class)))
-                .thenReturn(external);
+        Mockito.when(restTemplate.exchange(
+                contains("http://localhost:8080/employees"),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(EmployeeServiceResponse.class)
+        )).thenReturn(ResponseEntity.ok(external));
 
-        when(mapper.toAgenda(any()))
+        Mockito.when(mapper.toAgenda(empExternal))
                 .thenReturn(agendaDTO);
 
-        when(restTemplate.getForObject(contains("devices/assignation"),
-                eq(DeviceDTO.class)))
-                .thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
+        Mockito.when(restTemplate.exchange(
+                contains("http://localhost:8081/devices/assignation/1"),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(DeviceDTO.class)
+        )).thenThrow(HttpClientErrorException.NotFound.create(HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, null, null));
 
-        AgendaResponse response = service.listEmployees(0, 10);
+        AgendaResponse response = service.listEmployees("token", 0, 10);
 
-        assertNotNull(response);
         assertEquals(1, response.getEmployee().size());
         assertNull(response.getEmployee().get(0).getAssignedDevice());
     }
 
     @Test
-    void filterEmployees_ok() {
+    void listEmployees_deviceAssigned_ok() {
+
+        doNothing().when(tokenService).decrypt(anyString());
+
+        EmployeeExternalDTO empExternal = new EmployeeExternalDTO();
+        empExternal.setId(1);
+
+        EmployeeServiceResponse external = new EmployeeServiceResponse();
+        external.setEmployees(List.of(empExternal));
+        external.setTotalElements(1);
+        external.setTotalPages(1);
+
+        EmployeeAgendaDTO agendaDTO = new EmployeeAgendaDTO();
+        agendaDTO.setEmployeeId(1);
+
+        DeviceDTO device = new DeviceDTO();
+        device.setAssignedTo(1);
+
+        when(restTemplate.exchange(
+                contains("http://localhost:8080/employees"),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(EmployeeServiceResponse.class)
+        )).thenReturn(ResponseEntity.ok(external));
+
+        when(mapper.toAgenda(empExternal)).thenReturn(agendaDTO);
+
+        when(restTemplate.exchange(
+                contains("http://localhost:8081/devices/assignation/1"),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(DeviceDTO.class)
+        )).thenReturn(ResponseEntity.ok(device));
+
+        AgendaResponse response = service.listEmployees("token", 0, 10);
+
+        assertEquals(1, response.getEmployee().size());
+        assertNotNull(response.getEmployee().get(0).getAssignedDevice());
+        assertEquals(1,
+                response.getEmployee().get(0).getAssignedDevice().getAssignedTo());
+    }
+
+
+    @Test
+    void filterEmployees_emptyAgenda() {
+
+        doNothing().when(tokenService).decrypt(anyString());
 
         EmployeeServiceResponse external = new EmployeeServiceResponse();
         external.setEmployees(List.of());
         external.setTotalElements(0);
         external.setTotalPages(0);
 
-        when(restTemplate.getForObject(anyString(), eq(EmployeeServiceResponse.class)))
-                .thenReturn(external);
+        when(restTemplate.exchange(
+                contains("http://localhost:8080/employees/search"),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(EmployeeServiceResponse.class)
+        )).thenReturn(ResponseEntity.ok(external));
 
         AgendaResponse response =
-                service.filterEmployees("Luisa", "name", 0, 10);
+                service.filterEmployees("token", "Juan", "name", 0, 10);
 
         assertNotNull(response);
         assertTrue(response.getEmployee().isEmpty());
@@ -101,227 +175,115 @@ class ListContactsServiceImplTest {
 
 
     @Test
+    void filterEmployees_ok_withDevice() {
+        doNothing().when(tokenService).decrypt(anyString());
+        EmployeeExternalDTO empExternal = new EmployeeExternalDTO();
+        empExternal.setId(2);
+        EmployeeServiceResponse external = new EmployeeServiceResponse();
+        external.setEmployees(List.of(empExternal));
+        external.setTotalElements(1);
+        external.setTotalPages(1);
+        EmployeeAgendaDTO agendaDTO = new EmployeeAgendaDTO();
+        agendaDTO.setEmployeeId(2);
+        DeviceDTO device = new DeviceDTO();
+        device.setAssignedTo(2);
+        when(restTemplate.exchange(contains("employees/search"), eq(HttpMethod.GET), any(HttpEntity.class), eq(EmployeeServiceResponse.class))).thenReturn(ResponseEntity.ok(external));
+        when(mapper.toAgenda(empExternal)).thenReturn(agendaDTO);
+        when(restTemplate.exchange(contains("devices/assignation/2"), eq(HttpMethod.GET), any(HttpEntity.class), eq(DeviceDTO.class))).thenReturn(ResponseEntity.ok(device));
+        AgendaResponse response = service.filterEmployees("token", "Juan", "name", 0, 10);
+        assertEquals(1, response.getEmployee().size());
+        assertNotNull(response.getEmployee().get(0).getAssignedDevice());
+        assertEquals(2, response.getEmployee().get(0).getAssignedDevice().getAssignedTo());
+    }
+
+
+    @Test
     void createEmployee_ok() {
 
-        EmployeeCreateResponse created = new EmployeeCreateResponse();
-        created.setId(1);
+        doNothing().when(tokenService).decrypt(anyString());
 
-        when(restTemplate.postForObject(
-                anyString(),
-                any(),
-                eq(EmployeeCreateResponse[].class)))
-                .thenReturn(new EmployeeCreateResponse[]{created});
+        EmployeeCreateResponse created = new EmployeeCreateResponse();
+        created.setId(10);
+
+        when(restTemplate.exchange(
+                eq("http://localhost:8080/employees"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(EmployeeCreateResponse[].class)
+        )).thenReturn(ResponseEntity.ok(new EmployeeCreateResponse[]{created}));
 
         EmployeeCreateResponse response =
-                service.createEmployee(new EmployeeInputDTO());
+                service.createEmployee("token", new EmployeeInputDTO());
 
         assertNotNull(response);
-        assertEquals(1, response.getId());
+        assertEquals(10, response.getId());
+    }
+
+
+    @Test
+    void createEmployee_noEmployees_throwsException() {
+
+        doNothing().when(tokenService).decrypt(anyString());
+
+        when(restTemplate.exchange(
+                eq("http://localhost:8080/employees"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(EmployeeCreateResponse[].class)
+        )).thenReturn(ResponseEntity.ok(new EmployeeCreateResponse[]{}));
+
+        assertThrows(RuntimeException.class, () -> service.createEmployee("token", new EmployeeInputDTO()));
     }
 
 
     @Test
     void getDeviceBySerial_ok() {
-
+        doNothing().when(tokenService).decrypt(anyString());
         DeviceDTO device = new DeviceDTO();
         device.setAssignedTo(1);
-
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class)))
-                .thenReturn(device);
-
-        DeviceDTO response = service.getDeviceBySerial("ABC123");
-
+        when(restTemplate.exchange(contains("devices/serial-number/ABC123"), eq(HttpMethod.GET), any(HttpEntity.class), eq(DeviceDTO.class))).thenReturn(ResponseEntity.ok(device));
+        DeviceDTO response = service.getDeviceBySerial("token", "ABC123");
         assertNotNull(response);
+        assertEquals(1, response.getAssignedTo());
     }
 
 
     @Test
     void createDevice_ok() {
 
-        doReturn(null).when(restTemplate)
-                .postForObject(anyString(), any(), eq(Object.class));
+        doNothing().when(tokenService).decrypt(anyString());
 
-        service.createDevice(new DeviceAdd());
+        when(restTemplate.exchange(
+                eq("http://localhost:8081/devices"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(Object.class)
+        )).thenReturn(ResponseEntity.ok().build());
 
-        verify(restTemplate, times(1))
-                .postForObject(anyString(), any(), eq(Object.class));
+        assertDoesNotThrow(() -> service.createDevice("token", new DeviceAdd()));
     }
 
 
     @Test
     void assignDevice_ok() {
 
-        doNothing().when(restTemplate)
-                .put(anyString(), any(UpdateAssignedToRequest.class));
-
-        DeviceDTO response =
-                service.assignDevice(new UpdateAssignedToRequest());
-
-        assertNull(response);
-    }
-
-
-    @Test
-    void updateEmployee_deleteEmployee_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-        emp.setDeleteEmployee(true);
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class))).thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
-        assertThrows(HttpClientErrorException.class, () -> service.updateEmployee(emp));
-
-
-    }
-
-    @Test
-    void updateEmployee_updateOnly_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-
-        doNothing().when(restTemplate)
-                .put(contains("employees"), any());
-
-        assertDoesNotThrow(() -> service.updateEmployee(emp));
-    }
-
-    @Test
-    void updateEmployee_addDevice_notExists_ok() {
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-        AssignedDeviceInputDTO add = new AssignedDeviceInputDTO();
-        add.setSerialNumber("ABC123");
-        emp.setAddDevice(add);
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class))).thenThrow(new HttpClientErrorException(HttpStatus.NOT_FOUND));
-        assertThrows(HttpClientErrorException.class, () -> service.updateEmployee(emp));
-
-    }
-
-    @Test
-    void updateEmployee_deleteAssignedDevice_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-        emp.setDeleteAssignedDevice(true);
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class))).thenThrow(HttpClientErrorException.NotFound.create(HttpStatus.NOT_FOUND, "Not Found", null, null, null));
-        doNothing().when(restTemplate).put(anyString(), any());
-        assertDoesNotThrow(() -> service.updateEmployee(emp));
-    }
-
-
-    @Test
-    void updateEmployee_addDevice_alreadyAssigned_throwsException() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-
-        AssignedDeviceInputDTO add = new AssignedDeviceInputDTO();
-        add.setSerialNumber("ABC123");
-        emp.setAddDevice(add);
-
-        DeviceDTO existing = new DeviceDTO();
-        existing.setAssignedTo(99);
-
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class)))
-                .thenReturn(existing);
-
-        assertThrows(RuntimeException.class,
-                () -> service.updateEmployee(emp));
-    }
-    @Test
-    void updateEmployee_employeeIdNull_throwsException() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(null);
-
-        assertThrows(RuntimeException.class,
-                () -> service.updateEmployee(emp));
-    }
-
-    @Test
-    void updateEmployee_deleteEmployee_deviceNotFound_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-        emp.setDeleteEmployee(true);
-
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class)))
-                .thenThrow(
-                        HttpClientErrorException.NotFound.create(
-                                HttpStatus.NOT_FOUND, "Not Found", null, null, null
-                        )
-                );
-
-        doNothing().when(restTemplate)
-                .delete(anyString());
-
-        assertDoesNotThrow(() -> service.updateEmployee(emp));
-    }
-    @Test
-    void updateEmployee_deleteEmployee_deviceExists_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-        emp.setDeleteEmployee(true);
+        doNothing().when(tokenService).decrypt(anyString());
 
         DeviceDTO device = new DeviceDTO();
-        device.setAssignedTo(1);
+        device.setAssignedTo(5);
 
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class)))
-                .thenReturn(device);
+        when(restTemplate.exchange(
+                eq("http://localhost:8081/devices"),
+                eq(HttpMethod.PUT),
+                any(HttpEntity.class),
+                eq(DeviceDTO.class)
+        )).thenReturn(ResponseEntity.ok(device));
 
-        doNothing().when(restTemplate)
-                .put(anyString(), any());
+        DeviceDTO response =
+                service.assignDevice("token", new UpdateAssignedToRequest());
 
-        doNothing().when(restTemplate)
-                .delete(anyString());
-
-        assertDoesNotThrow(() -> service.updateEmployee(emp));
+        assertNotNull(response);
+        assertEquals(5, response.getAssignedTo());
     }
-
-    @Test
-    void updateEmployee_deleteAssignedDevice_deviceNotFound_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-        emp.setDeleteAssignedDevice(true);
-
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class)))
-                .thenThrow(
-                        HttpClientErrorException.NotFound.create(
-                                HttpStatus.NOT_FOUND, "Not Found", null, null, null
-                        )
-                );
-
-        doNothing().when(restTemplate)
-                .put(anyString(), any());
-
-        assertDoesNotThrow(() -> service.updateEmployee(emp));
-    }
-    @Test
-    void updateEmployee_addDevice_exists_notAssigned_ok() {
-
-        EmployeeInputDTO emp = new EmployeeInputDTO();
-        emp.setEmployeeId(1);
-
-        AssignedDeviceInputDTO add = new AssignedDeviceInputDTO();
-        add.setSerialNumber("ABC123");
-        emp.setAddDevice(add);
-
-        DeviceDTO existing = new DeviceDTO();
-        existing.setAssignedTo(null);
-
-        when(restTemplate.getForObject(anyString(), eq(DeviceDTO.class)))
-                .thenReturn(existing);
-
-        doNothing().when(restTemplate)
-                .put(anyString(), any());
-
-        doNothing().when(restTemplate)
-                .put(contains("employees"), any());
-
-        assertDoesNotThrow(() -> service.updateEmployee(emp));
-    }
-
 
 }

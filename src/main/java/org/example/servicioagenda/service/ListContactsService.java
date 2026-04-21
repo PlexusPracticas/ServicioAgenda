@@ -9,14 +9,12 @@ import org.example.servicioagenda.dto.response.EmployeeCreateResponse;
 import org.example.servicioagenda.dto.response.EmployeeServiceResponse;
 
 public interface ListContactsService {
-    AgendaResponse listEmployees(int page,int size);
-    AgendaResponse filterEmployees(String filterValue, String filterType, int page, int size);
+    AgendaResponse listEmployees(String token,int page,int size);
+    AgendaResponse filterEmployees(String token,String filterValue, String filterType, int page, int size);
 
-    EmployeeCreateResponse createEmployee(EmployeeInputDTO req);
-    DeviceDTO getDeviceBySerial(String serialNumber);
-    void createDevice(DeviceAdd req);
-    DeviceDTO assignDevice(UpdateAssignedToRequest req);
-    void updateEmployee(EmployeeInputDTO req);
-
-
+    EmployeeCreateResponse createEmployee(String token,EmployeeInputDTO req);
+    DeviceDTO getDeviceBySerial(String token,String serialNumber);
+    void createDevice(String token,DeviceAdd req);
+    DeviceDTO assignDevice(String token,UpdateAssignedToRequest req);
+    void updateEmployee(String token, EmployeeInputDTO req);
 }
