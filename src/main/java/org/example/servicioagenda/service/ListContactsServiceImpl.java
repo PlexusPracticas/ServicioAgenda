@@ -1,10 +1,7 @@
 package org.example.servicioagenda.service;
 
-import org.example.servicioagenda.dto.request.UpdateEmployeesRequest;
+import org.example.servicioagenda.dto.request.*;
 import org.example.servicioagenda.security.TokenFilter;
-import org.example.servicioagenda.dto.request.DeviceAdd;
-import org.example.servicioagenda.dto.request.EmployeeInputDTO;
-import org.example.servicioagenda.dto.request.UpdateAssignedToRequest;
 import org.example.servicioagenda.dto.response.*;
 import org.example.servicioagenda.mapper.AgendaMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -143,34 +140,170 @@ public class ListContactsServiceImpl implements ListContactsService {
     @Override
     public void updateEmployee(String token, EmployeeInputDTO emp) {
 
+        String url = "http://localhost:8080/employees";
 
-        if (emp.getEmployeeId() == null) {
-            throw new RuntimeException("employeeId es obligatorio");
-        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("employees", List.of(emp));
 
-        if (Boolean.TRUE.equals(emp.getDeleteEmployee())) {
+        HttpEntity<?> entity = buildEntity(token, body);
 
-            HttpEntity<?> entity = buildEntity(token, null);
-
-            restTemplate.exchange(
-                    "http://localhost:8080/employees/id/" + emp.getEmployeeId(),
-                    HttpMethod.DELETE,
-                    entity,
-                    Void.class
-            );
-            return;
-        }
-
-
-        HttpEntity<?> entity = buildEntity(token, emp);
-
-        restTemplate.exchange(
-                "http://localhost:8080/employees/id/"+emp.getEmployeeId(),
-                HttpMethod.PUT,
-                entity,
-                Void.class
-        );
+        restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
     }
+
+    @Override
+    public DeviceDTO getDeviceByAssigned(String token, Integer employeeId) {
+        String url = "http://localhost:8081/devices/assignation/" + employeeId;
+        HttpEntity<?> entity = buildEntity(token, null);
+        return restTemplate.exchange(url, HttpMethod.GET, entity, DeviceDTO.class).getBody();
+    }
+
+    @Override
+    public void deleteEmployee(String token, Integer employeeId) {
+        String url = "http://localhost:8080/employees/id/" + employeeId;
+        HttpEntity<?> entity = buildEntity(token, null);
+        restTemplate.exchange(url, HttpMethod.DELETE, entity, Void.class);
+    }
+
+    @Override
+    public void unassignDeviceByDeviceId(String token, UpdateAssignedByDeviceIdRequest req) {
+        String url = "http://localhost:8081/devices/unassign-by-id";
+        HttpEntity<?> entity = buildEntity(token, req);
+        restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+    }
+
+
+    @Override
+    public UpdateEmployeesResult updateEmployees(
+            String token,
+            List<EmployeeInputDTO> employees) {
+
+        UpdateEmployeesResult result = new UpdateEmployeesResult();
+
+        for (EmployeeInputDTO emp : employees) {
+
+            Integer employeeId = emp.getEmployeeId();
+
+            try {
+            /* DELETE EMPLOYEE */
+                if (Boolean.TRUE.equals(emp.getDeleteEmployee())) {
+
+                    try {
+                        DeviceDTO device = getDeviceByAssigned(token, employeeId);
+
+                        try {
+                            UpdateAssignedByDeviceIdRequest unassign =
+                                    new UpdateAssignedByDeviceIdRequest();
+                            unassign.setDeviceId(device.getDeviceId());
+                            unassign.setAssignedTo(null);
+
+                            unassignDeviceByDeviceId(token, unassign);
+
+                        } catch (Exception e) {
+                            result.getErrors().add(new ContactErrorDto(
+                                    String.valueOf(employeeId),
+                                    "Se eliminado el contacto pero no se ha podido quitar la asignacion con el dispositivo con id "
+                                            + device.getDeviceId()
+                            ));
+                        }
+
+                    } catch (HttpClientErrorException.NotFound nf) {
+                        // solo log
+                    }
+
+                    try {
+                        deleteEmployee(token, employeeId);
+                        result.setAnySuccess(true);
+                    } catch (Exception e) {
+                        result.getErrors().add(new ContactErrorDto(
+                                String.valueOf(employeeId),
+                                "Error al intentar eliminar contacto"
+                        ));
+                    }
+
+                    continue;
+                }
+
+            /* UPDATE EMPLOYEE */
+                updateEmployee(token, emp);
+                result.setAnySuccess(true);
+
+            /*DELETE ASSIGNED DEVICE */
+                if (Boolean.TRUE.equals(emp.getDeleteAssignedDevice())) {
+                    try {
+                        DeviceDTO device = getDeviceByAssigned(token, employeeId);
+
+                        UpdateAssignedByDeviceIdRequest unassign =
+                                new UpdateAssignedByDeviceIdRequest();
+                        unassign.setDeviceId(device.getDeviceId());
+                        unassign.setAssignedTo(null);
+
+                        unassignDeviceByDeviceId(token, unassign);
+
+                    } catch (HttpClientErrorException.NotFound nf) {
+                        // solo log
+                    } catch (Exception e) {
+                        result.getErrors().add(new ContactErrorDto(
+                                String.valueOf(employeeId),
+                                "Se eliminado el contacto pero no se ha podido quitar la asignacion con el dispositivo con id "
+                                        + employeeId
+                        ));
+                    }
+                }
+
+            /* ADD DEVICE */
+                if (emp.getAddDevice() != null) {
+
+                    String sn = emp.getAddDevice().getSerialNumber();
+
+                    try {
+                        DeviceDTO existing = getDeviceBySerial(token, sn);
+
+                        if (existing.getAssignedTo() != null) {
+                            result.getErrors().add(new ContactErrorDto(
+                                    String.valueOf(employeeId),
+                                    "No se puede asignar el dispositivo. " + sn + " ya está asignado"
+                            ));
+                        } else {
+                            UpdateAssignedToRequest assign = new UpdateAssignedToRequest();
+                            assign.setSerialNumber(sn);
+                            assign.setAssignedTo(employeeId);
+                            assignDevice(token, assign);
+                        }
+
+                    } catch (HttpClientErrorException.NotFound nf) {
+                        try {
+                            AssignedDeviceInputDTO input = emp.getAddDevice();
+
+                            DeviceAdd dev = new DeviceAdd();
+                            dev.setSerialNumber(input.getSerialNumber());
+                            dev.setBrand(input.getBrand());
+                            dev.setModel(input.getModel());
+                            dev.setOperatingSystem(input.getOperatingSystem());
+                            dev.setAssignedTo(employeeId);
+
+                            createDevice(token, dev);
+
+                        } catch (Exception e) {
+                            result.getErrors().add(new ContactErrorDto(
+                                    String.valueOf(employeeId),
+                                    "Error al crear el dispositivo " + sn
+                            ));
+                        }
+                    }
+                }
+
+            } catch (Exception e) {
+                result.getErrors().add(new ContactErrorDto(
+                        String.valueOf(employeeId),
+                        e.getMessage()
+                ));
+            }
+        }
+
+        return result;
+    }
+
+
 
     private HttpEntity<?> buildEntity(String token, Object body) {
         tokenService.decrypt(token); // validación adicional

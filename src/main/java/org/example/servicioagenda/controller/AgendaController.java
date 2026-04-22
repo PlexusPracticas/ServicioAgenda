@@ -28,7 +28,7 @@ public class AgendaController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         try {
-            AgendaResponse response = agendaService.listEmployees(token,page, size);
+            AgendaResponse response = agendaService.listEmployees(token, page, size);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             e.printStackTrace();
@@ -46,7 +46,7 @@ public class AgendaController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         try {
-            AgendaResponse response = agendaService.filterEmployees(token,filterValue, filterType, page, size);
+            AgendaResponse response = agendaService.filterEmployees(token, filterValue, filterType, page, size);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -56,7 +56,7 @@ public class AgendaController {
 
 
     @PostMapping("/employees")
-    public ResponseEntity<?> agregarContactos(@RequestHeader("TOKEN") String token,@RequestBody CreateContactDto request) {
+    public ResponseEntity<?> agregarContactos(@RequestHeader("TOKEN") String token, @RequestBody CreateContactDto request) {
         List<ContactErrorDto> errores = new ArrayList<>();
         boolean algunExito = false;
         for (EmployeeAdd contacto : request.getEmployees()) {
@@ -70,7 +70,7 @@ public class AgendaController {
                 empReq.setMailClient(contacto.getMailClient());
                 empReq.setPhoneNumber(contacto.getPhoneNumber());
 
-                EmployeeCreateResponse empCreated = agendaService.createEmployee(token,empReq);
+                EmployeeCreateResponse empCreated = agendaService.createEmployee(token, empReq);
 
                 Integer employeeId = empCreated.getId();
                 employeeIdStr = "Contacto agregado con id " + employeeId;
@@ -81,7 +81,7 @@ public class AgendaController {
                 String sn = contacto.getAssignedDevice().getSerialNumber();
                 try {
                     //usamos el get device
-                    DeviceDTO existing = agendaService.getDeviceBySerial(token,sn);
+                    DeviceDTO existing = agendaService.getDeviceBySerial(token, sn);
 
                     if (existing.getAssignedTo() != null) {
                         errores.add(new ContactErrorDto(employeeIdStr, "No se puede asignar el dispositivo " + sn + ". Ya está asignado a otro contacto con id " + existing.getAssignedTo()));
@@ -92,7 +92,7 @@ public class AgendaController {
                     assignReq.setSerialNumber(sn);
                     assignReq.setAssignedTo(employeeId);
                     try {
-                        agendaService.assignDevice(token,assignReq);
+                        agendaService.assignDevice(token, assignReq);
                     } catch (Exception e) {
                         errores.add(new ContactErrorDto(employeeIdStr, "Error técnico - No se pudo asignar el dispositivo " + sn));
                     }
@@ -105,7 +105,7 @@ public class AgendaController {
                         devReq.setModel(contacto.getAssignedDevice().getModel());
                         devReq.setOperatingSystem(contacto.getAssignedDevice().getOperatingSystem());
                         devReq.setAssignedTo(employeeId);
-                        agendaService.createDevice(token,devReq);
+                        agendaService.createDevice(token, devReq);
                     } catch (Exception e) {
                         e.printStackTrace();
                         //errores.add(new ContactErrorDto(employeeIdStr, "Error al crear dispositivo " + sn));
@@ -133,35 +133,27 @@ public class AgendaController {
     }
 
 
+
+
     @PutMapping("/employees")
     public ResponseEntity<?> updateContacts(
             @RequestHeader("TOKEN") String token,
             @RequestBody UpdateEmployeesRequest request) {
 
-        List<ContactErrorDto> errors = new ArrayList<>();
-        boolean anySuccess = false;
+        UpdateEmployeesResult result =
+                agendaService.updateEmployees(token, request.getEmployees());
 
-        for (EmployeeInputDTO emp : request.getEmployees()) {
-            try {
-                agendaService.updateEmployee(token,emp);
-                anySuccess = true;
-            } catch (Exception e) {
-                errors.add(new ContactErrorDto(
-                        String.valueOf(emp.getEmployeeId()),
-                        e.getMessage()
-                ));
-            }
+        if (!result.isAnySuccess()) {
+            return ResponseEntity.status(500)
+                    .body(new ErrorListResponse(result.getErrors()));
         }
 
-        if (!anySuccess) {
-            return ResponseEntity.status(500).body(new ErrorListResponse(errors));
+        if (!result.getErrors().isEmpty()) {
+            return ResponseEntity.status(204)
+                    .body(new ErrorListResponse(result.getErrors()));
         }
 
-        if (!errors.isEmpty()) {
-            return ResponseEntity.status(206).body(new ErrorListResponse(errors));
-        }
-        return ResponseEntity.ok(Map.of("message", "Contactos actualizados correctamente")
-        );
+        return ResponseEntity.ok().build();
     }
 
 
