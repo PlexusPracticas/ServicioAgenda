@@ -9,6 +9,7 @@ import lombok.Setter;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class DeviceDTO {
     private Integer deviceId;
+    private String serialNumber;
     private String brand;
     private String model;
     private String operatingSystem;

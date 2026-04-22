@@ -135,6 +135,7 @@ class AgendaControllerTest {
     }
 
 
+
     @Test
     void agregarContacto_ok() throws Exception {
 
@@ -156,10 +157,10 @@ class AgendaControllerTest {
                         Mockito.eq("SN123")))
                 .thenReturn(existing);
 
-        Mockito.when(agendaService.assignDevice(
-                        Mockito.eq(TOKEN),
-                        Mockito.any(UpdateAssignedToRequest.class)))
-                .thenReturn(null);
+
+        Mockito.doNothing()
+                .when(agendaService)
+                .assignDevice(Mockito.eq(TOKEN), Mockito.any(UpdateAssignedToRequest.class));
 
         AssignedDeviceInputDTO device = new AssignedDeviceInputDTO();
         device.setSerialNumber("SN123");
@@ -172,12 +173,25 @@ class AgendaControllerTest {
         CreateContactDto request = new CreateContactDto();
         request.setEmployees(List.of(emp));
 
+
         mockMvc.perform(post("/agenda/employees")
                         .header("TOKEN", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());
+
+
+        Mockito.verify(agendaService).assignDevice(
+                Mockito.eq(TOKEN),
+                Mockito.argThat(req ->
+                        req.getDevices() != null &&
+                                req.getDevices().size() == 1 &&
+                                "SN123".equals(req.getDevices().get(0).getSerialNumber()) &&
+                                req.getDevices().get(0).getAssignedTo() == 1
+                )
+        );
     }
+
 
     @Test
     void agregarContacto_dispositivoOcupado_204() throws Exception {

@@ -1,15 +1,19 @@
 package org.example.servicioagenda.dto.request;
 
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class UpdateAssignedToRequest {
-
-    private String serialNumber;   // número de serie del dispositivo
-    private Integer assignedTo;    // id del empleado que se va a asignar
+    private List<AssignedDeviceInputDTO> devices;
+    private String serialNumber;
+    private Integer assignedTo;
 
 }
 

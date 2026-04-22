@@ -6,10 +6,7 @@ import org.example.servicioagenda.dto.response.*;
 import org.example.servicioagenda.mapper.AgendaMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.crossstore.ChangeSetPersister;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
@@ -60,9 +57,7 @@ public class ListContactsServiceImpl implements ListContactsService {
         response.setTotalElements(external.getTotalElements());
         response.setTotalPages(external.getTotalPages());
         return response;
-
     }
-
 
     @Override
     public AgendaResponse filterEmployees(String token, String filterValue, String filterType, int page, int size) {
@@ -87,9 +82,7 @@ public class ListContactsServiceImpl implements ListContactsService {
         response.setTotalElements(external.getTotalElements());
         response.setTotalPages(external.getTotalPages());
         return response;
-
     }
-
 
     @Override
     public EmployeeCreateResponse createEmployee(String token, EmployeeInputDTO req) {
@@ -102,9 +95,7 @@ public class ListContactsServiceImpl implements ListContactsService {
             throw new RuntimeException("No se creó ningún empleado");
         }
         return response[0];
-
     }
-
 
     @Override
     public DeviceDTO getDeviceBySerial(String token, String serialNumber) {
@@ -117,7 +108,6 @@ public class ListContactsServiceImpl implements ListContactsService {
 
     @Override
     public void createDevice(String token, DeviceAdd devReq) {
-
         String url = "http://localhost:8081/devices";
 
         Map<String, Object> body = new HashMap<>();
@@ -128,17 +118,15 @@ public class ListContactsServiceImpl implements ListContactsService {
     }
 
     @Override
-    public DeviceDTO assignDevice(String token, UpdateAssignedToRequest req) {
+    public void assignDevice(String token, UpdateAssignedToRequest req) {
         String url = "http://localhost:8081/devices";
 
         HttpEntity<?> entity = buildEntity(token, req);
-        return restTemplate.exchange(url, HttpMethod.PUT, entity, DeviceDTO.class).getBody();
-
+        restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
     }
 
-
     @Override
-    public void updateEmployee(String token, EmployeeInputDTO emp) {
+    public ResponseEntity<Void> updateEmployee(String token, EmployeeInputDTO emp) {
 
         String url = "http://localhost:8080/employees";
 
@@ -147,7 +135,7 @@ public class ListContactsServiceImpl implements ListContactsService {
 
         HttpEntity<?> entity = buildEntity(token, body);
 
-        restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+        return restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
     }
 
     @Override
@@ -159,6 +147,7 @@ public class ListContactsServiceImpl implements ListContactsService {
 
     @Override
     public void deleteEmployee(String token, Integer employeeId) {
+        System.out.println("LLAMANDO DELETE A EMPLOYEE " + employeeId);
         String url = "http://localhost:8080/employees/id/" + employeeId;
         HttpEntity<?> entity = buildEntity(token, null);
         restTemplate.exchange(url, HttpMethod.DELETE, entity, Void.class);
@@ -170,7 +159,6 @@ public class ListContactsServiceImpl implements ListContactsService {
         HttpEntity<?> entity = buildEntity(token, req);
         restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
     }
-
 
     @Override
     public UpdateEmployeesResult updateEmployees(
@@ -184,73 +172,65 @@ public class ListContactsServiceImpl implements ListContactsService {
             Integer employeeId = emp.getEmployeeId();
 
             try {
-            /* DELETE EMPLOYEE */
+
                 if (Boolean.TRUE.equals(emp.getDeleteEmployee())) {
 
                     try {
                         DeviceDTO device = getDeviceByAssigned(token, employeeId);
 
-                        try {
-                            UpdateAssignedByDeviceIdRequest unassign =
-                                    new UpdateAssignedByDeviceIdRequest();
-                            unassign.setDeviceId(device.getDeviceId());
-                            unassign.setAssignedTo(null);
+                        AssignedDeviceInputDTO dto = new AssignedDeviceInputDTO();
+                        dto.setSerialNumber(device.getSerialNumber());
+                        dto.setAssignedTo(null);
 
-                            unassignDeviceByDeviceId(token, unassign);
+                        UpdateAssignedToRequest req = new UpdateAssignedToRequest();
+                        req.setDevices(List.of(dto));
 
-                        } catch (Exception e) {
-                            result.getErrors().add(new ContactErrorDto(
-                                    String.valueOf(employeeId),
-                                    "Se eliminado el contacto pero no se ha podido quitar la asignacion con el dispositivo con id "
-                                            + device.getDeviceId()
-                            ));
-                        }
+                        assignDevice(token, req);
 
-                    } catch (HttpClientErrorException.NotFound nf) {
-                        // solo log
-                    }
-
-                    try {
-                        deleteEmployee(token, employeeId);
-                        result.setAnySuccess(true);
                     } catch (Exception e) {
-                        result.getErrors().add(new ContactErrorDto(
-                                String.valueOf(employeeId),
-                                "Error al intentar eliminar contacto"
-                        ));
+
+                        System.out.println(
+                                "No se pudo desasignar dispositivo de employee " + employeeId
+                        );
                     }
 
+
+                    System.out.println("BORRANDO EMPLOYEE " + employeeId);
+                    deleteEmployee(token, employeeId);
+
+                    result.setAnySuccess(true);
                     continue;
                 }
 
-            /* UPDATE EMPLOYEE */
-                updateEmployee(token, emp);
-                result.setAnySuccess(true);
-
-            /*DELETE ASSIGNED DEVICE */
                 if (Boolean.TRUE.equals(emp.getDeleteAssignedDevice())) {
                     try {
                         DeviceDTO device = getDeviceByAssigned(token, employeeId);
 
-                        UpdateAssignedByDeviceIdRequest unassign =
-                                new UpdateAssignedByDeviceIdRequest();
-                        unassign.setDeviceId(device.getDeviceId());
-                        unassign.setAssignedTo(null);
+                        AssignedDeviceInputDTO dto = new AssignedDeviceInputDTO();
+                        dto.setSerialNumber(device.getSerialNumber());
+                        dto.setAssignedTo(null);
 
-                        unassignDeviceByDeviceId(token, unassign);
+                        UpdateAssignedToRequest req = new UpdateAssignedToRequest();
+                        req.setDevices(List.of(dto));
 
-                    } catch (HttpClientErrorException.NotFound nf) {
-                        // solo log
-                    } catch (Exception e) {
-                        result.getErrors().add(new ContactErrorDto(
-                                String.valueOf(employeeId),
-                                "Se eliminado el contacto pero no se ha podido quitar la asignacion con el dispositivo con id "
-                                        + employeeId
-                        ));
+                        System.out.println("SERIAL A DESASIGNAR = " + device.getSerialNumber());
+
+                        assignDevice(token, req);
+
+                        result.setAnySuccess(true);
+
+                    } catch (HttpClientErrorException.NotFound e) {
+                        System.out.println(
+                                "Empleado " + employeeId + " no tiene dispositivo asignado"
+                        );
                     }
                 }
 
-            /* ADD DEVICE */
+                ResponseEntity<?> response = updateEmployee(token, emp);
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    result.setAnySuccess(true);
+                }
+
                 if (emp.getAddDevice() != null) {
 
                     String sn = emp.getAddDevice().getSerialNumber();
@@ -264,10 +244,16 @@ public class ListContactsServiceImpl implements ListContactsService {
                                     "No se puede asignar el dispositivo. " + sn + " ya está asignado"
                             ));
                         } else {
-                            UpdateAssignedToRequest assign = new UpdateAssignedToRequest();
-                            assign.setSerialNumber(sn);
-                            assign.setAssignedTo(employeeId);
-                            assignDevice(token, assign);
+
+                            AssignedDeviceInputDTO dto = new AssignedDeviceInputDTO();
+                            dto.setSerialNumber(sn);
+                            dto.setAssignedTo(employeeId);
+
+                            UpdateAssignedToRequest assignReq = new UpdateAssignedToRequest();
+                            assignReq.setDevices(List.of(dto));
+
+                            assignDevice(token, assignReq);
+
                         }
 
                     } catch (HttpClientErrorException.NotFound nf) {

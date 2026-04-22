@@ -88,9 +88,15 @@ public class AgendaController {
                         continue;
                     }
                     //assignedTo == null se asigna
+
+                    AssignedDeviceInputDTO dto = new AssignedDeviceInputDTO();
+                    dto.setSerialNumber(sn);
+                    dto.setAssignedTo(employeeId);
+
+
                     UpdateAssignedToRequest assignReq = new UpdateAssignedToRequest();
-                    assignReq.setSerialNumber(sn);
-                    assignReq.setAssignedTo(employeeId);
+                    assignReq.setDevices(List.of(dto));
+
                     try {
                         agendaService.assignDevice(token, assignReq);
                     } catch (Exception e) {
@@ -131,7 +137,6 @@ public class AgendaController {
         }
         return ResponseEntity.status(201).build();
     }
-
 
 
 
